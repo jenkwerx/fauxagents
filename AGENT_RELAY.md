@@ -20,7 +20,7 @@ Some agents may be temporarily or persistently unreliable — they might not run
 ### Reliability Status (edit this block to change)
 
 ```
-UNRELIABLE_AGENTS: Agent B 
+UNRELIABLE_AGENTS: none
 ```
 
 Valid values:
@@ -120,6 +120,7 @@ The `human_kept.md` entry ensures future agents learn from the override and don'
 - **You can modify static HTML and CSS, but do not write or modify JavaScript or Python code directly.** If you identify code changes that need to happen, describe them clearly in `passed.md` as suggestions for Agent A or C to implement. Be specific — include file names, function names, what should change, and why.
 - **Do NOT assign code work to a single agent.** When recommending a code change, always phrase it as "for Agent A (primary) or Agent C" — never just `[Agent C]` or just `[Agent A]`. Routing decisions belong to Agent A as the primary decision-maker, not to you. Writing `[Agent C] Do this coding task` bypasses A and is a rule violation. The only exceptions are (a) Agent A has already declined this specific work in `human_kept.md`, or (b) `human.md` explicitly directed routing to a single agent this run — and in both cases, cite the source when you make the single-agent recommendation.
 - **Your recommendations will get a real answer.** Agent A is required to either act on, defer, or explicitly decline each recommendation you flag. If you see that a past recommendation of yours was declined in `passed.md` or `human_kept.md`, do not re-raise the same recommendation without new evidence. Trust the override record.
+- **CRITICAL — Do not announce file writes you have not yet performed.** Before saying "I will now write `passed.md`," "I am writing the file," "my work is done," or any equivalent wrap-up language, you must have already issued the actual file-write tool call and confirmed it succeeded. Do not produce a closing summary describing actions that were never executed. If you announce a file write, the very next operation must be the tool call — not the conclusion. This applies to every file you mention writing, but especially `passed.md`: a run that ends without an updated `passed.md` is a failed handoff, even if the chat output reads as if everything went fine. **The launcher checks `passed.md`'s modification time after every run** and will log a WARN entry if the file wasn't actually touched — don't be the one who triggers that warning.
 
 **Agent C — The Generalist**
 - Good at everything — coding, writing, research, review.
@@ -215,6 +216,7 @@ You **must** do this before proceeding. Do not skip this step. Do not assume the
 - `~/bkupmd/` directory — create if missing
 - `~/research/` directory — create if missing
 - `~/scratch/` directory — create if missing
+- `~/gitinfo/` directory — create if missing (the GitHub-reader-facing files `git_overview.md`, `git_update_round.md`, and `git_updates_all.md` live here, written every run at Step 6f)
 - `~/human.md` — create as an empty file if missing
 - `~/passed.md` — create with the seed template below if missing
 - `~/human_kept.md` — create with the header template below if missing
@@ -224,6 +226,7 @@ You **must** do this before proceeding. Do not skip this step. Do not assume the
 mkdir -p ~/bkupmd
 mkdir -p ~/research
 mkdir -p ~/scratch
+mkdir -p ~/gitinfo
 
 # Create human.md if missing (empty = no override)
 touch ~/human.md
@@ -361,6 +364,8 @@ Overwrite `~/passed.md` with your handoff. Follow the format specified in that f
 
 If you acted on a `human.md` this run, note that in your handoff so the next agent knows what changed and why.
 
+> **⚠️ Actually perform this write. Do not narrate it and skip it.** This step is the most common silent-failure point in the relay. The temptation — especially when context is filling up or you're near the end of your turn budget — is to type "I will now write `passed.md`" and then jump straight to the closing summary without issuing the tool call. Don't. Issue the file-write tool call, confirm it succeeded (e.g. by reading the new file's first few lines back), and only then move to the next step. The launcher records `passed.md`'s modification time at the start of your run and checks it at the end; an unchanged mtime triggers a WARN in the agent log, and the next agent will see it and know your handoff was fabricated.
+
 **c) Archive and empty `human.md` (if it had content this run):**
 ```bash
 # Only backup if human.md had content (not empty)
@@ -413,6 +418,142 @@ EOF
 
 The author can restart the relay at any time by writing into `human.md`, which automatically clears `done.txt` (see Step 0).
 
+**f) Write the gitinfo files (every run):**
+
+The repository on GitHub needs reader-facing files that describe the project. These are NOT consumed by agents — they're for humans (and search engines) arriving at the GitHub repo. Three files live in `~/gitinfo/`, each with different update semantics:
+
+- **`~/gitinfo/git_overview.md`** — a project-wide overview. Pitches the project to a stranger. Explains what it is, why it exists, what it does, the high-level tech stack, the user-visible features. Long-lived but **rewritten every run** so it stays accurate. Backed up to `bkupmd/` before overwriting. **Audience: someone landing on the GitHub repo who has no prior context.**
+
+- **`~/gitinfo/git_update_round.md`** — a single-run snapshot. "What I did this round, what's next." Written fresh every run; the previous round's file is backed up to `bkupmd/` before being overwritten. Similar in spirit to `passed.md` but written for an outside reader rather than for the next agent.
+
+- **`~/gitinfo/git_updates_all.md`** — an accumulating list of every round's update. **Append-only** from the agent's perspective: read the existing file (if any), prepend this run's entry to the top (newest-first), write the result back. **No backup needed** — the agent never destroys content, only adds to it. The **human** is the one who clears or trims this file (typically when they push a release to the repo and want a fresh slate). Agents must NOT trim, summarize, or remove old entries; that decision belongs to the human.
+
+```bash
+# Ensure gitinfo/ exists
+mkdir -p ~/gitinfo
+mkdir -p ~/bkupmd
+
+# --- git_overview.md: rewrite each run, back up first if existed ---
+[ -f ~/gitinfo/git_overview.md ] && \
+  cp ~/gitinfo/git_overview.md ~/bkupmd/git_overview_$(date +%Y%m%d%H%M%S).md
+# (then write fresh git_overview.md — see content guidance below)
+
+# --- git_update_round.md: rewrite each run, back up first if existed ---
+[ -f ~/gitinfo/git_update_round.md ] && \
+  cp ~/gitinfo/git_update_round.md ~/bkupmd/git_update_round_$(date +%Y%m%d%H%M%S).md
+# (then write fresh git_update_round.md — see content guidance below)
+
+# --- git_updates_all.md: prepend this run's entry to the top of the file ---
+# No header on this file — it's a stream of entries, newest first. The
+# agent writes the new entry to a temp file, then concatenates temp + existing
+# (if any) and writes the result back. Safe to re-run; the temp file is
+# fully written before the merge.
+NEW_ENTRY=$(mktemp)
+cat > "$NEW_ENTRY" <<'EOF'
+## [YYYY-MM-DD HH:MM] — Agent X — one-line summary
+
+- Bullet 1: something concrete that happened or got decided this round
+- Bullet 2
+- Bullet 3
+
+---
+
+EOF
+if [ -f ~/gitinfo/git_updates_all.md ]; then
+  cat "$NEW_ENTRY" ~/gitinfo/git_updates_all.md > ~/gitinfo/git_updates_all.md.tmp
+  mv ~/gitinfo/git_updates_all.md.tmp ~/gitinfo/git_updates_all.md
+else
+  # First-ever run — just promote the new entry to be the file
+  mv "$NEW_ENTRY" ~/gitinfo/git_updates_all.md
+fi
+rm -f "$NEW_ENTRY"  # safe even if mv consumed it; rm -f doesn't error
+```
+
+**`git_overview.md` should include:**
+- Project name and one-paragraph summary.
+- The "why" — what problem this solves or what use case it's for.
+- The "what" — main features, current capabilities. List them concretely.
+- The "how" — high-level tech stack and architecture. Not a deep dive — enough that a reader knows what they're looking at.
+- A short "getting started" section if the project is runnable. Skip if there's nothing meaningful to run yet.
+- Tone: welcoming and informative. Read it aloud — does it make a stranger want to look closer? If yes, ship it.
+
+**`git_update_round.md` should include:**
+- A header with this run's date, agent identity, and a one-line summary.
+- "What landed this round" — bullets of concrete changes.
+- "Currently in flight" — what the next agent (or this one's next run) will pick up.
+- "Notes / open questions" — anything that's unresolved, surprising, or worth flagging to a GitHub reader. If something needs the human, also flag it in `_HOOMAN.md`.
+- Keep it terse. This is one round's status, not the project's full history. The full history is `git_updates_all.md`.
+
+**`git_updates_all.md` entries** should be a slightly compressed version of `git_update_round.md`:
+- Header line: `## [timestamp] — Agent X — one-line summary`
+- 2-5 bullets: the most important things this round did or decided.
+- Skip the "in flight" / "next steps" sections — those are properly the responsibility of the current `git_update_round.md`. `git_updates_all.md` is a *log*, not a status board.
+- End each entry with `---` so entries are visually separated.
+
+**g) Write `_HOOMAN.md` OR `_HOOMAN_CLEAN_*.md` (every run — exactly one):**
+
+This is the agent-to-human channel. It lives at the project root and signals to a human glancing at the file listing whether anything needs their attention. The leading underscore on both names keeps these files sorted to the top so the human can't miss the signal.
+
+**Two possible files. Exactly one should exist at any time:**
+
+- **`_HOOMAN.md`** — exists when the agent has identified items that need the human's attention before further productive work can happen. Plain filename, no timestamp, easy to spot.
+- **`_HOOMAN_CLEAN_YYYYMMDDHHMMSS.md`** — exists when the agent ran successfully and has nothing for the human. Timestamped filename so the human can see when the most recent clean run was without opening the file. Old `_HOOMAN_CLEAN_*` files are removed by the agent on each run; only the most recent should remain.
+
+**`_HOOMAN.md` is write-only from the agent's perspective.** The agent does not read it. Each run, the agent overwrites the file fresh with whatever the agent currently has to say to the human. There are no backups — the file is for the human, and if the human acted on the previous version the action shows up in `human.md` (which the agent DOES read at Step 2).
+
+**The decision tree at handoff time:**
+
+1. Determine whether this run produced anything that requires human attention. If yes, write `_HOOMAN.md`. If no, write a `_HOOMAN_CLEAN_*` file.
+2. After writing, **clean up the file from the OPPOSITE state.** This ensures only one of the two ever exists.
+
+```bash
+# Decide which state this run ends in. Set NEEDS_HUMAN=1 if the agent has
+# anything to flag for the human; NEEDS_HUMAN=0 otherwise.
+NEEDS_HUMAN=0   # set to 1 when the agent has decided to flag items
+
+if [ "$NEEDS_HUMAN" -eq 1 ]; then
+  # --- WRITE _HOOMAN.md, REMOVE any stale _HOOMAN_CLEAN_* files ---
+  cat > ~/_HOOMAN.md <<'EOF'
+# For the human monitor
+
+(content here — see "Include in _HOOMAN.md" below)
+EOF
+  # Remove any prior clean-state markers so the listing shows only _HOOMAN.md
+  rm -f ~/_HOOMAN_CLEAN_*.md
+
+else
+  # --- WRITE a fresh _HOOMAN_CLEAN_<timestamp>.md, REMOVE old ones AND _HOOMAN.md ---
+  CLEAN_NAME="_HOOMAN_CLEAN_$(date +%Y%m%d%H%M%S).md"
+  cat > ~/"$CLEAN_NAME" <<'EOF'
+No action needed. Agent ran successfully and has nothing for the human.
+EOF
+  # Remove any older clean files — only the most recent should remain
+  for f in ~/_HOOMAN_CLEAN_*.md; do
+    [ "$f" = "$HOME/$CLEAN_NAME" ] && continue   # skip the one we just wrote
+    rm -f "$f"
+  done
+  # And remove _HOOMAN.md if it existed from a previous run — the human
+  # does not need to read a stale "needs attention" file when there's no
+  # longer anything to attend to. The actions they took live in human.md
+  # (consumed at Step 2) and human_kept.md (appended at Step 6d).
+  rm -f ~/_HOOMAN.md
+fi
+```
+
+**Include in `_HOOMAN.md`** (when `NEEDS_HUMAN=1`):
+- **Decisions blocked on you.** Anything an agent flagged as needing your call before further work makes sense. Examples: ambiguous spec, two viable architectural paths, a content choice agents shouldn't make on their own, a third-party service that needs your account.
+- **Concerning patterns.** If an agent (including yourself) has noticed something that looks wrong but might be intentional — e.g. a config value that's surprisingly low, a file the relay seems to be growing instead of overwriting, recurring failures of a specific tool — flag it here.
+- **Open questions across runs.** If a previous `human.md` asked something that takes more than one round to answer, the in-progress answer can live here until the human is satisfied. (Note: since `_HOOMAN.md` is write-only with no read, you have to re-state any in-progress answer fresh from `passed.md` / `human_kept.md` context, not by reading the previous `_HOOMAN.md`.)
+
+**Don't include in `_HOOMAN.md`:**
+- Routine status updates (those go in `git_update_round.md` and `passed.md`).
+- Decisions agents have already made and documented (those go in `human_kept.md` via the override protocol).
+- Speculative concerns. Only flag things that genuinely need a human; the relay should solve what it can solve.
+
+**The human's response, if any, comes back through `human.md`.** A human reads `_HOOMAN.md`, decides which items to address, writes their answer or decision into `human.md`, and the next agent acts on it via the standard human-override flow at Step 2. If the human chooses to ignore an item, the next agent will re-surface it in `_HOOMAN.md` until either (a) the human responds via `human.md`, or (b) the agent decides the item is no longer relevant and drops it from the next round.
+
+**The human is allowed to ignore both files for as long as they want.** No agent should ever block waiting for `_HOOMAN.md` to be read or responded to. These files are informational signals.
+
 ### Step 7: Release the Lock
 
 Delete the lock file when you're done:
@@ -437,7 +578,7 @@ This signals that the next agent can take over.
 8. **`done.txt` means stop — unless restarted.** If `done.txt` exists AND `human.md` is empty, exit immediately. If `done.txt` exists AND `human.md` has content, it's a **restart**: the launcher clears `done.txt` and prepends a RESTART marker to `passed.md` before invoking you; you should still double-check and clean up if needed. Only create `done.txt` when you are certain all work is complete. See Step 0 for the full four-state table.
 9. **Stay in your lane — Agent A has the final call.** Play to your agent's strengths (see Agent Strengths and Roles above). Agent B does not write code. Agent A and C do not ignore QA requests. Respect the division of labor. **Agent A is the primary decision-maker** — A may audit or override any other agent, including previous A runs. A must evaluate every recommendation in `passed.md` and either act on it, defer it with a note, or explicitly decline it. All overrides (reverts, rejected directions, declined recommendations) must be documented in both `passed.md` and `human_kept.md`. B and C must respect declined recommendations and not re-raise them without new evidence. **If an agent is marked unreliable** (see Agent Reliability & Delegation), the fallback rules temporarily expand coverage but do not change role authority — see Rule 13.
 10. **Document your research.** Any research, investigation, or decision-making process goes into `~/research/` as a dated markdown file. Review recent research files on every run.
-11. **Keep the project root clean.** The project root (`~/`) is reserved for relay system files only: `AGENT_RELAY.md`, `PROJECT.md`, `passed.md`, `human.md`, `human_kept.md`, `done.txt`, and `agent_relay.lock`. **Never create project output files, scratch files, test files, logs, data files, or any other artifacts in the root directory.** Everything the project produces belongs in a subdirectory. Use what `PROJECT.md` defines (e.g. `./code`, `./docs`, `./seasons`) or create an appropriately named subdirectory if one doesn't exist yet. If you're unsure where something goes, create a `./scratch/` directory — but never litter the root.
+11. **Keep the project root clean.** The project root (`~/`) is reserved for relay system files only: `AGENT_RELAY.md`, `PROJECT.md`, `passed.md`, `human.md`, `human_kept.md`, `_HOOMAN.md` *or* `_HOOMAN_CLEAN_YYYYMMDDHHMMSS.md` (exactly one of these will exist after a run — see Step 6g), `done.txt`, and `agent_relay.lock`. **Never create project output files, scratch files, test files, logs, data files, or any other artifacts in the root directory.** Everything the project produces belongs in a subdirectory. Use what `PROJECT.md` defines (e.g. `./code`, `./docs`, `./seasons`) or create an appropriately named subdirectory if one doesn't exist yet. If you're unsure where something goes, create a `./scratch/` directory — but never litter the root.
 12. **Work in small bites. Write breadcrumbs. Hand off early.** You have limited tool calls per session. Pick ONE small task, leave breadcrumbs in `~/scratch/breadcrumbs.md` as you go, and check your pace every 8-10 calls. Getting cut off without writing `passed.md` is the worst possible outcome — always reserve enough turns to hand off cleanly. When in doubt, stop and write `passed.md` NOW.
 13. **Unreliable agents get covered, not abandoned.** Check `UNRELIABLE_AGENTS` at the top of this file every run. If an agent is unreliable, their workload is covered per the Delegation Matrix (A covered by C; B covered by A or C; C covered by A). Covering agents absorb workload, not authority — Agent A remains the primary decision-maker in every configuration. B's no-code rule and C's QA-flag rule apply even when covering. Document any coverage in `passed.md` with a `COVERAGE:` entry so the relay stays transparent.
 
@@ -452,8 +593,15 @@ These files are part of this system. Read them as part of your startup:
 - **[human.md](./human.md)** — *(always present, may be empty)* One-time override from the project author (check at Step 2, archive at Step 6c)
 - **[human_kept.md](./human_kept.md)** — Persistent lessons file. Running log of all past `human.md` corrections. Created automatically if missing. **Read every run, follow as standing rules** (Step 2b, append at Step 6d)
 - **[done.txt](./done.txt)** — *(may not exist)* Signals all work is complete. Created by an agent at Step 6e when finished. If it exists alongside an empty `human.md`, the relay halts. If it exists alongside a non-empty `human.md`, the launcher treats that as a RESTART and clears `done.txt` before invoking you (see Step 0)
+- **[_HOOMAN.md](./_HOOMAN.md)** *or* **`_HOOMAN_CLEAN_YYYYMMDDHHMMSS.md`** — Agent-to-human channel. Exactly one of these exists after a run: `_HOOMAN.md` if the agent has identified items needing human attention, or a timestamped `_HOOMAN_CLEAN_*.md` if the run completed cleanly with nothing to flag. The dual-name pattern means a human glancing at the project root immediately sees the state without needing to open a file. **Write-only from the agent's perspective**: agents overwrite `_HOOMAN.md` (or write a fresh `_HOOMAN_CLEAN_*.md`) every run at Step 6g without reading the previous content. Old clean-marker files are removed by the agent on every run; only the most recent should remain. The human's responses come back through `human.md`. The leading underscore on both names sorts them to the top of file listings.
 
 ## Directories
 
-- **`~/bkupmd/`** — Contains timestamped archives of all previous `passed.md` handoffs and any `human.md` interjects that have been acted upon. Agents do not read from this directory — it exists for the author's reference and history.
+- **`~/bkupmd/`** — Contains timestamped archives of `passed.md`, `human.md`, `git_overview.md`, and `git_update_round.md`. Agents do not read from this directory — it exists for the author's reference and history. (Note: `git_updates_all.md` and `_HOOMAN.md` are NOT backed up; the former is append-only and never destroys content, the latter is write-only with no preservation needed.)
 - **`~/research/`** — Contains dated markdown files documenting research, decisions, and how they were applied. Agents should review recent files (last several days) on each run to verify accuracy and consistency.
+- **`~/gitinfo/`** — Contains the GitHub-reader-facing files that describe the project to outside readers landing on the repo. Three files live here:
+  - `git_overview.md` — project pitch, rewritten every run (with backup)
+  - `git_update_round.md` — this round's snapshot, rewritten every run (with backup)
+  - `git_updates_all.md` — accumulating log of every round's entry, append-only by agents, cleared/trimmed only by the human
+
+  All three are written at Step 6f. Agents do not read from these files to inform their work — they're outputs, not inputs.
