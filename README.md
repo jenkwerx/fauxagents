@@ -12,7 +12,9 @@ The agents are:
 - **Agent B — Gemini 2.5 Pro** — writer, auditor, researcher, graphics. Does NOT write code.
 - **Agent C — Codex (OpenAI)** — generalist. Can code, but flags work for QA. Cannot do graphics.
 
-When agents disagree, Agent A's call stands. When agents have ideas, they go in `passed.md` for the next agent to read.
+The role assignments above are a *convention*, not something the relay enforces — you define roles per-project in `PROJECT.md`. The roles supplement that ships in this repo gives you exactly this A/B/C split if you want it; otherwise define your own (or treat all three as equal generalists).
+
+When agents disagree, Agent A's call stands (in this convention). When agents have ideas, they go in `passed.md` for the next agent to read.
 
 ## Quick Start
 
@@ -57,7 +59,11 @@ Python 3.11+, no external dependencies.
 EOF
 ```
 
-That's it. Agent A creates the rest of the relay's bookkeeping files (`passed.md`, `human.md`, `human_kept.md`, etc.) on its first run.
+That's enough to start, but if you're running multiple agents (A, B, C) and want them to specialize — primary coder, auditor, generalist, etc. — append the contents of `PROJECT_roles_supplement.md` from this repo to the bottom of your `PROJECT.md`. The supplement defines a tested A/B/C split with documented routing rules. Without it, all agents behave as equal generalists.
+
+For a fresh start instead, copy `PROJECT_template.md` from this repo as a skeleton and fill in the blanks.
+
+The relay creates the rest of the bookkeeping files (`passed.md`, `human.md`, `human_kept.md`, `gitinfo/`, etc.) automatically on the first run.
 
 ### 4. Run an agent
 
@@ -181,9 +187,13 @@ If you have several projects, group runs by agent so each agent only contends wi
 
 Each agent has roughly 20 minutes of active work time and shouldn't try to do too much per run — pick one small task, do it well, hand off cleanly. Cron runs are spaced at least 30 minutes apart per project so locks always clear before the next attempt.
 
-### Agent A is the primary decision-maker
+### Roles and decision authority are project-defined
 
-When agents disagree, Agent A decides. Agent B and Agent C make recommendations in `passed.md`; Agent A either acts on them, defers them with a note, or declines them with a documented reason. **Silently ignoring a recommendation is not allowed** — every recommendation gets a real answer in `passed.md` or `human_kept.md`.
+The relay itself is role-agnostic. Each project's `PROJECT.md` defines which agent does what — primary coder, auditor, generalist, decision-maker — and whether disagreements between agents have a hierarchy or get resolved by discussion. The relay just enforces the mechanics (locks, handoffs, file lifecycle); strategy is the project's call.
+
+A drop-in supplement (`PROJECT_roles_supplement.md`) ships in this repo with a tested A/B/C split: A as primary coder + decision-maker, B as auditor/writer/researcher with no JS or Python edits, C as generalist with QA-flag rule. Paste it into a project's `PROJECT.md` if you want exactly that — otherwise define your own.
+
+Whatever the roles, the universal rule is: **silently ignoring a recommendation is not allowed.** Every recommendation in `passed.md` from another agent gets either action, a "deferred" note, or a documented decline (in `passed.md` and `human_kept.md`).
 
 ### `human.md` is your microphone
 
@@ -225,6 +235,26 @@ The relay uses a simple file-based lock at `<project>/agent_relay.lock`. If a fr
 ### Prompt size is effectively unbounded
 
 The launcher pipes the prompt to each agent via stdin, not as a command-line argument. This sidesteps Linux's `ARG_MAX` limit (typically ~128 KB on argv + envp combined), which used to cause `Argument list too long` failures on projects where `PROJECT.md` and `passed.md` had grown past 100 KB. With the stdin-piped form, prompt size is bounded only by the model's context window, not the kernel.
+
+### What the launcher enforces vs. what it just instructs
+
+The relay's bookkeeping rules — write `passed.md`, write `gitinfo/`, write `_HOOMAN.md` or `_HOOMAN_CLEAN_*.md`, append to `human_kept.md`, etc. — live in `AGENT_RELAY.md`, the system prompt every agent reads on every run. The launcher (`agent_call.sh`) does not run these rules itself; the agent reads them and is *expected* to follow them.
+
+Agents usually do. But when they don't — because they ran out of turn budget, or because they fabricated a wrap-up summary without issuing the actual file-write tool calls (a known Gemini failure mode) — the rules silently break.
+
+To make these failures visible, the launcher captures modification times of every expected file *before* invoking the agent and re-checks them *after*. If a file wasn't touched, a `WARN` line is logged to `<project>/logs/agent.log`:
+
+```
+WARN: passed.md mtime did not advance during this run. Agent likely fabricated its closing summary without issuing the file-write tool call.
+WARN: gitinfo/git_overview.md was not updated this run (Step 6f skipped or fabricated).
+WARN: neither _HOOMAN.md nor _HOOMAN_CLEAN_*.md was written this run (Step 6g skipped or fabricated).
+```
+
+The check only fires when the agent exited cleanly (exit code 0). Crashes have their own diagnostic signal (the exit code itself) and aren't double-reported here.
+
+The warnings don't fail the run — the agent did real work that the next agent can build on, and a hard fail would be more disruptive than the missing file. But the next agent will see the warning in the recent log when it picks up, and you'll see it too if you spot-check `agent.log`. **If you see these warnings repeatedly from the same agent, that's a signal worth investigating** — possibly a tighter `--max-turns` cap, a clearer instruction, or a model swap.
+
+The set of files monitored: `passed.md`, `gitinfo/git_overview.md`, `gitinfo/git_update_round.md`, `gitinfo/git_updates_all.md`, and one of `_HOOMAN.md` / `_HOOMAN_CLEAN_*.md`. Adding new monitored files is a 5-line edit in `agent_call.sh` near the existing `snap_mtime` helper.
 
 ## Big Thoughts (Architecture Notes)
 
@@ -369,11 +399,17 @@ This used to happen when `PROJECT.md` + `passed.md` + `human_kept.md` combined g
 **Agent B (Gemini) burns far more tokens than A or C**
 Likely cause: the project is large and Gemini's `--include-directories` was loading the whole tree into context every run. The launcher now omits that flag by default — Gemini reads files lazily on demand, like Claude and Codex. If you want the original eager-loading behavior for a small project, pass `--gemini-preload`.
 
+**WARN messages about files "not updated this run"**
+The launcher checks that every expected file (`passed.md`, the three `gitinfo/` files, and the `_HOOMAN` signal) was actually written by the agent. If one wasn't, you'll see a `WARN:` line in `agent.log`. The agent did real work either way — the warning just flags that it didn't reach Step 6 cleanly. Common causes: agent ran out of `--max-turns`, agent fabricated a closing summary without issuing the tool calls (a known Gemini pattern), or agent crashed in a way that didn't surface as a non-zero exit code. If you see this repeatedly from the same agent, raise `--max-turns` or sharpen the AGENT_RELAY.md instructions for that agent's role.
+
 ## Files in This Repo
 
 - `agent_call.sh` — the launcher (this is what cron invokes)
-- `AGENT_RELAY.md` — the system prompt every agent reads on every run; defines roles, startup procedure, override protocols
-- `README.md` — this file
+- `AGENT_RELAY.md` — the system prompt every agent reads on every run. Project-agnostic mechanics: lock semantics, startup procedure, handoff protocol, file lifecycle. Roles and decision authority are NOT defined here — those go in each project's `PROJECT.md`.
+- `PROJECT_template.md` — a starting skeleton for new projects, with a compact table-based roles section. Copy this when you create a new project, fill in the blanks.
+- `PROJECT_roles_supplement.md` — a drop-in block to paste at the bottom of an existing `PROJECT.md` to add tested A/B/C role conventions (primary coder, auditor, generalist) plus a delegation matrix. Use when you want roles without writing them from scratch.
+- `LICENSE` — MIT-0 (MIT No Attribution).
+- `README.md` — this file.
 
 ## License
 
