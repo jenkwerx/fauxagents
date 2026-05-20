@@ -1,8 +1,8 @@
 # Roles Supplement for Existing PROJECT.md Files
 
-Paste the section below into the bottom of each existing `PROJECT.md`. It replaces the role conventions that used to live in `AGENT_RELAY.md`. The defaults here mirror the previous relay-wide conventions exactly, so projects using this supplement should see no behavior change.
+Paste the section below into the bottom of each existing `PROJECT.md`. It replaces the role conventions that used to live in `AGENT_RELAY.md`. The defaults here mirror the current relay-wide conventions, expanded to cover the current agents (A, C, D, G, M, OG, OGF, OQ, OQF).
 
-If a particular project has different needs (e.g. all agents code equally, or only Agent A runs, or you want B to do graphics for one project and not another), edit the snippet for that project after pasting.
+If a particular project has different needs (e.g. all agents code equally, or only Agent A runs, or you want different graphics routing for one project), edit the snippet for that project after pasting.
 
 ---
 
@@ -12,34 +12,29 @@ If a particular project has different needs (e.g. all agents code equally, or on
 
 ## Agent Roles
 
-This project uses three agents (A, B, C). Each agent reads this section at the start of every run.
+This project uses [N] agents. Each agent reads this section at the start of every run.
 
 ```
 UNRELIABLE_AGENTS: none
 ```
 
-Set the value above to one or more agent identifiers (`A`, `B`, `C`, comma-separated) when an agent isn't running reliably and you want others to cover. Set back to `none` for normal operation.
+Set the value above to one or more agent identifiers (e.g. `A`, `G`, `G,C`, `M,OQ`) when an agent isn't running reliably and you want others to cover. Valid identifiers are any agent letter(s) you've defined above. Set back to `none` for normal operation.
 
 ### Role definitions
 
-**Agent A — primary coder and decision-maker**
-- Does the bulk of the coding. Writing and modifying code is your largest share of the workload.
-- Is the primary decision-maker. When agents disagree about a technical decision, an implementation, or whether prior work was correct, your call stands.
-- May audit and override any other agent's work, including earlier A runs.
-- Still flag your own code changes for QA in `passed.md` — being the decision-maker doesn't mean infallible.
-- Limit creative writing and graphics; route those to B (or C for non-graphics writing) via `passed.md` notes.
+| Agent | Primary responsibilities | Limits | Notes |
+|---|---|---|---|
+| **A** | [Peer coder with C — can work on anything. Project decision-maker.] | [Defer to C for heavy creative writing when load-balancing] | [Final call on disagreements per Decision Authority below] |
+| **C** | [Peer coder with A — can work on anything. Strong on graphics and creative writing.] | [No hard limits; coordinate with A on decision-level calls] | [Best choice when the task involves both code AND creative/graphics work] |
+| **D** | [Auditor + can implement low-impact changes that align with A's or C's recommendations. Graphics-friendly.] | [No unilateral architectural decisions; surface concerns in passed.md and wait for A/C buy-in before larger edits] | [DeepSeek via Claude Code harness; requires DEEPSEEK_API_KEY] |
+| **G** | [Gemini auditor, documentation, research, and graphics] | [No JavaScript or Python edits] | [Recommendations get a real answer from A or C] |
+| **M** | [Documentation, audit, and low-impact changes M agrees with that A/C/D have recommended. Considered strong at creative writing until noted otherwise.] | [No unilateral architectural decisions; surface concerns in passed.md and wait for A/C/D buy-in before larger edits] | [Mistral Vibe CLI; requires MISTRAL_API_KEY. New to implementation work — start small, build trust.] |
+| **OG** | [Same as M — documentation, audit, and low-impact changes OG agrees with that A/C/D have recommended.] | [Same as M — no unilateral architectural decisions; surface concerns in passed.md and wait for A/C/D buy-in before larger edits] | [Gemma 4 31B via OpenRouter (Claude Code harness); requires OPENROUTER_API_KEY. If both M and OG are active, treat as two independent auditor voices.] |
+| **OGF** | [Same as OG, but on the OpenRouter free-tier Gemma model] | [Same as OG; expect tighter rate limits (200 req/day) and partial-run risk] | [Useful as a low-cost independent audit voice; requires OPENROUTER_API_KEY.] |
+| **OQ** | [Same as M — documentation, audit, and low-impact changes OQ agrees with that A/C/D have recommended. Considered strong at creative writing until noted otherwise.] | [Same as M — no unilateral architectural decisions; surface concerns in passed.md and wait for A/C/D buy-in before larger edits] | [Qwen 3.6 35B A3B via OpenRouter (Claude Code harness); requires OPENROUTER_API_KEY. New to implementation work — start small, build trust. If both M and OQ are active, treat as two independent auditor voices.] |
+| **OQF** | [Same as OQ, but on the OpenRouter free-tier Qwen model] | [Same as OQ; expect tighter rate limits and partial-run risk] | [Useful as a low-cost independent audit voice; requires OPENROUTER_API_KEY.] |
 
-**Agent B — writer, auditor, researcher, graphics**
-- Best at creative writing, documentation, code review, QA, audits, graphics, and research.
-- Review code written by A and C. Polish documentation. Conduct research. Update graphics.
-- Modify static HTML and CSS, but **do not write or modify JavaScript or Python directly.** Describe code changes in `passed.md` for A or C to implement — phrase recommendations as "for Agent A (primary) or Agent C," never to a single agent.
-- Trust the override record: if a recommendation of yours was declined in `passed.md` or `human_kept.md`, don't re-raise it without new evidence.
-
-**Agent C — generalist**
-- Good at coding, writing, research, and review.
-- Can write and modify code, but **always flag code changes for QA** in `passed.md`.
-- Allowed to do everything B does except graphics.
-- Same override-respect rule as B: if A declined a recommendation, don't re-raise without new evidence.
+Most projects won't use all the agents listed above. Delete rows for agents you aren't running. The relay doesn't care which subset you use — if an agent isn't in your cron schedule, it simply doesn't appear.
 
 ### Delegation matrix
 
@@ -47,41 +42,26 @@ If an agent is marked unreliable in the `UNRELIABLE_AGENTS` line above, their wo
 
 | Unreliable | Covered by | Notes |
 |---|---|---|
-| A | C | C absorbs the coding load. Decisions that would have been A's queue in `passed.md` for A's next run; C does NOT inherit decision-making authority. |
-| B | A or C | Either picks up B's audit/docs/research work. Graphics: A may do as a last resort if blocking; C still cannot do graphics. |
-| C | A | A absorbs C's generalist work — mostly additive since A is already the primary coder. |
+| A | C | C is A's peer and absorbs the coding/decision load. Decision-level calls queue in `passed.md` for A's next run if C wants to defer. |
+| C | A | A is C's peer and absorbs the work. Heavy creative writing may queue for C's return or route to M or OQ. |
+| D | M, then OQ/OQF, then G, then A/C | M and OQ are the closest analogs (auditor + light implementation). |
+| G | D/M/OG/OGF/OQ/OQF, then A/C | G is the sole Gemini slot; other audit agents cover if it is unreliable. |
+| M | OQ, then OG, then OGF, then OQF, then D, then G, then A/C | OQ is M's closest role twin. OG/OGF are the next closest analogs. |
+| OG | OGF, then OQ, then M, then D, then G, then A/C | OGF is OG's free-tier twin. OQ/M are the next closest analogs. |
+| OGF | OG, then OQ, then M, then D, then G, then A/C | OG is OGF's paid-tier twin. OQ/M are the next closest analogs. |
+| OQ | M, then OQF, then D, then G, then A/C | M is OQ's twin (same role, different model). |
+| OQF | OQ, then M, then D, then G, then A/C | OQF is the free-tier Qwen variant and should usually defer to paid OQ when both exist. |
 
-Coverage absorbs workload, not authority. B covering for A or C still cannot edit JavaScript or Python. C covering for A still flags own code changes for QA. Document any coverage you take on with a `COVERAGE:` line in `passed.md`.
+Coverage absorbs workload, not authority. If the role definitions above prohibit something for an agent (e.g. G can't write Python), that prohibition still applies when that agent is covering for someone else.
 
-### Decision authority and override documentation
+If you've deleted some agent rows above because you don't use them, you can prune the corresponding rows here too — but it's harmless to leave them; an agent you never run will never be marked unreliable.
 
-Agent A has final call. When A overrides prior work, rejects a direction, or declines a recommendation from B or C, document it in two places:
+### Decision authority
 
-**In `passed.md` under "What I Did":**
-```
-- OVERRIDE: [Reverted | Rejected direction | Declined recommendation] from [agent] re: [file/area/topic]
-  Original: (what the prior agent did, proposed, or recommended)
-  Override: (what A did instead, or A's decision not to act)
-  Reason: (why the prior approach or recommendation was wrong)
-```
+[State who has final call when agents disagree. Example: "Agents A and C are peer primary decision-makers; either can ratify a direction. When A and C disagree, A's call stands. D, M, and OQ flag concerns in `passed.md`; A or C act on, defer, or decline each one with documentation per the override protocol in AGENT_RELAY.md."]
 
-**In `human_kept.md` as a standing rule:**
-```
-### [YYYY-MM-DD HH:MM] — Agent A override
-**Type:** (Reverted work | Rejected direction | Declined recommendation | Routing violation)
-**What was overridden:** (brief summary)
-**What changed:** (what A did instead)
-**Standing rule:** (what future agents should do/avoid)
-
----
-```
-
-Silent rejection is not allowed. Every recommendation in `passed.md` gets either action, a `deferred` note, or a documented decline.
+[If your project has no decision hierarchy and treats all agents as equal generalists, just say so — e.g. "All agents are generalists; resolve disagreements by discussion in passed.md."]
 
 ### Routing rules
 
-- Code changes (JavaScript, Python) go to A or C — never to B alone.
-- Static HTML/CSS edits can go to anyone.
-- Audit findings, code review, documentation polish: B (or A/C if covering).
-- Graphics, image work: B only (A as reluctant last resort if B is unreliable AND the work is blocking).
-- Research: anyone. Save findings to `~/research/YYYYMMDD_topic.md` regardless of which agent did it.
+[Optional. If certain types of work should be routed to specific agents, list it. Example: "Code changes go to A or C. Graphics-heavy work prefers C, then D. Creative writing prefers C, then M or OQ. Audit findings go to G, D, M, OQ, or OQF. Research can go to anyone but should be cross-referenced in `~/research/`."]

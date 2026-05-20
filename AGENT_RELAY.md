@@ -7,7 +7,7 @@ You are one of likely multiple agents in a relay system. You and your counterpar
 Check the lock file to determine if it's your turn. There are multiple agents:
 
 - **Agent A** — runs via a primary service (local, home directory: `~/`)
-- **Agent B** — runs via a secondary service
+- **Agent G** — runs via a secondary service
 - **Agent C** — runs via a tertiary service
 ..etc..
 
@@ -23,7 +23,7 @@ Coverage absorbs workload, not authority. Whatever role-specific limits apply to
 
 ## Roles and Responsibilities
 
-This relay supports multiple agents (typically named "Agent A", "Agent B", "Agent C", etc.). The relay does not assume any particular role assignment — different projects use the agents differently. **Read your project's `PROJECT.md` to learn what your specific agent is supposed to do, what limits apply, and how disagreements between agents are resolved.** If `PROJECT.md` doesn't define roles, treat all agents as equal generalists.
+This relay supports multiple agents (typically named "Agent A", "Agent C", "Agent G", etc.). The relay does not assume any particular role assignment — different projects use the agents differently. **Read your project's `PROJECT.md` to learn what your specific agent is supposed to do, what limits apply, and how disagreements between agents are resolved.** If `PROJECT.md` doesn't define roles, treat all agents as equal generalists.
 
 If `PROJECT.md` declares one agent as the primary decision-maker, respect that. A recommendation in `passed.md` addressed to that agent is theirs to resolve — don't act on it unilaterally if you're someone else.
 
@@ -135,6 +135,46 @@ Read `~/passed.md`. It tells you what the previous agent accomplished, what stil
 
 Read `~/PROJECT.md`. This is your grounding document — what's being built, who does what, and any project-specific rules that override the relay defaults.
 
+### Step 4b: Write a Skeleton Handoff (Crash-Safety Insurance)
+
+Before starting any deep work, write a brief **skeleton** `passed.md` describing what you intend to do this run. This is **insurance against getting cut off** by max-turns or max-price caps mid-task. If the cap hits before you finish your real handoff, the next agent at least sees what you were attempting and can pick up the thread.
+
+The skeleton is **not** your final handoff. It's a stub that will be overwritten at Step 6 with your full, real handoff. The wording in the skeleton itself should say so explicitly — see template below.
+
+Do this in two parts:
+
+**Part 1 — Back up the prior agent's `passed.md` first.** This preserves the prior agent's full handoff in `bkupmd/` before you overwrite `passed.md` with your skeleton. This is the same backup that Step 6a used to do; we're just doing it earlier so the prior agent's work is safe even if you crash before Step 6.
+
+```bash
+mkdir -p ~/bkupmd
+cp ~/passed.md ~/bkupmd/passed_$(date +%Y%m%d%H%M%S).md
+```
+
+**Part 2 — Write a short skeleton `passed.md` describing your intent.** Keep this to 5-10 lines. The point is to be cheap (2-3 tool calls) so this step itself doesn't contribute meaningfully to running out of turns. Use this template:
+
+```markdown
+# [SKELETON — this run incomplete] passed.md
+
+**Run started:** YYYY-MM-DD HH:MM (your timestamp)
+**Agent:** (your identifier — A, C, D, G, M, OG, OGF, OQ, or OQF)
+
+## Intended work this run
+- (One or two sentences on what you're about to do, based on Step 3 + Step 4.)
+- (e.g. "Audit incJS_06_stable.js for the duplicate-render bug Agent A flagged last round.")
+- (e.g. "Implement the scratch-horse feature scaffolding A handed me; will flag for QA.")
+
+## Status
+SKELETON — this passed.md will be overwritten with the full handoff at Step 6.
+If you (the next agent) are reading this, the previous agent ran out of turns
+or price budget before finishing. Check agent.log for the actual outcome, and
+look in bkupmd/ for the prior round's full handoff (the most recent backup
+file made before this run started).
+```
+
+Don't add findings, code analysis, or recommendations to the skeleton — those go in the real handoff at Step 6. The skeleton is just "here's what I was about to do." Anything more is wasted turns.
+
+**Step 6a (the backup) is now redundant** — you've already done it here. Skip Step 6a when you reach Step 6. Step 6b (the real `passed.md` rewrite) still happens at Step 6 as normal.
+
 ### Step 5: Do Your Work
 
 You have roughly **20 minutes** and a finite number of tool calls. Work on `human.md` first if it had content this run, then the next priority from `passed.md` guided by `PROJECT.md`.
@@ -156,8 +196,12 @@ Before you finish, do the following **in this order**:
 mkdir -p ~/bkupmd
 ```
 
-**a) Archive the current `passed.md`:**
+**a) Archive the current `passed.md` (only if not already done at Step 4b):**
+
+You should have already done this at Step 4b. If for any reason you skipped 4b or are unsure, run it now as a fallback. If you DID do 4b, you can either skip this step or run it again — a second backup is harmless (just an extra timestamped file in `bkupmd/` that captures the skeleton).
+
 ```bash
+# Optional defensive re-backup. Safe to skip if Step 4b ran cleanly.
 cp ~/passed.md ~/bkupmd/passed_$(date +%Y%m%d%H%M%S).md
 ```
 
@@ -166,6 +210,24 @@ cp ~/passed.md ~/bkupmd/passed_$(date +%Y%m%d%H%M%S).md
 Overwrite `~/passed.md` with your handoff. The next agent has no memory of your session — `passed.md` is the only bridge. Be specific. If you acted on `human.md` this run, note what changed and why.
 
 > **⚠️ Issue the actual file-write tool call. Do not type "I will now write `passed.md`" and jump to the closing summary without the write happening.** The launcher checks every expected file's modification time after you exit; missing writes show up as `WARN:` lines in the agent log that the next agent will see. This applies to every file written in Step 6, not just `passed.md`.
+
+> **⚠️ Fill in real values — do not write bash substitutions as literal text.** When you use a file-write tool to create `passed.md`, the tool writes whatever text you give it character-for-character. It does not invoke a shell. Strings like `$(date +%Y-%m-%d)` or `${USER}` will appear in the file verbatim and look broken to the next agent.
+>
+> If you need the current timestamp, run `date -Iseconds` via the bash tool first, then paste the result as a literal string into your file-write call. The same applies anywhere else you'd reach for a bash substitution. (Backup commands inside `bash` heredocs elsewhere in this document — like `cp ~/passed.md ~/bkupmd/passed_$(date +%Y%m%d%H%M%S).md` — DO get evaluated, because those run in a shell. File-write tools do not.)
+>
+> Also fill in your own agent identity literally. If you are Agent M, write `**Agent:** M`, not `**Agent:** A` (which is the first example mentioned in this document and is easy to copy by mistake) and not `**Agent:** {agent}` or any other placeholder.
+>
+> Worked example of a correctly-filled header for an Agent M run that took about 12 minutes:
+>
+> ```markdown
+> ## Last Run
+>
+> - **Agent:** M
+> - **Timestamp:** 2026-05-11T15:54:55-05:00
+> - **Run Duration:** ~12 min
+> ```
+>
+> Same rules apply to all other Step 6 files: `gitinfo/git_update_round.md`, `_HOOMAN_CLEAN_<timestamp>.md`, `human_kept.md` entries, and so on. Substitute real values; do not write `$(...)` or `{placeholder}` literally.
 
 **c) Archive and empty `human.md` (if it had content this run):**
 ```bash
@@ -314,6 +376,28 @@ fi
 
 If a human ignores an item, the next agent re-surfaces it (or drops it if no longer relevant). No agent ever blocks waiting on a `_HOOMAN.md` response.
 
+**h) Write `next_round.txt` (every run):**
+
+Estimate what the next agent's run will look like, by category. The launcher uses this to pick a model variant for the next run — code-heavy work goes to a faster/cheaper model, audit/research/writing work goes to the frontier-tier default.
+
+Format: one line, four percentages summing to 100, all four categories present even if zero. Optional comment lines below explain your reasoning.
+
+```bash
+cat > ~/next_round.txt <<EOF
+CODE=75 AUDIT=15 RESEARCH=10 WRITING=0
+# Generated by Agent X at $(date -Iseconds)
+# Reasoning: next task is implementing the new copy button across 6 pages.
+EOF
+```
+
+Categories:
+- **CODE** — writing or modifying source code
+- **AUDIT** — reviewing existing code or content for problems
+- **RESEARCH** — investigating something to inform a decision (docs, APIs, comparisons)
+- **WRITING** — prose: documentation, articles, content, copy
+
+Heuristics: a fresh task starting → CODE-heavy. Mid-task with code already written → AUDIT-heavy. Approach unclear → RESEARCH-heavy. Documentation push → WRITING-heavy. Mixed work → split honestly. The estimate doesn't have to be perfect — it's a hint to the launcher, not a contract.
+
 ### Step 7: Exit
 
 Just exit. The launcher releases the lock and runs final checks (mtime verification of the files you wrote at Step 6, log trim) after you're done. You do not need to delete the lock file.
@@ -328,9 +412,9 @@ Just exit. The launcher releases the lock and runs final checks (mtime verificat
 4. **Always archive before overwriting.** Copy `passed.md` to `~/bkupmd/passed_{YYYYMMDDHHMMSS}.md` before writing the new one. Same for `human.md` once you've acted on it. Same for `git_overview.md` and `git_update_round.md`.
 5. **Stay within scope.** `PROJECT.md` defines the project. Don't drift — unless `human.md` says otherwise.
 6. **`done.txt` means stop.** Only create it when you are certain all work is complete. If you see one alongside non-empty `human.md`, the launcher has already restarted the relay before invoking you.
-7. **Respect the roles defined in `PROJECT.md`.** If a project assigns a primary decision-maker, A-B-C role limits, or a delegation matrix, follow it. Document every override (reverted work, rejected direction, declined recommendation) in both `passed.md` and `human_kept.md`. Silent rejection is not allowed.
+7. **Respect the roles defined in `PROJECT.md`.** If a project assigns a primary decision-maker, agent-specific role limits, or a delegation matrix, follow it. Document every override (reverted work, rejected direction, declined recommendation) in both `passed.md` and `human_kept.md`. Silent rejection is not allowed.
 8. **Document research.** Anything you research goes into `~/research/` as a dated markdown file. Review recent research files on every run.
-9. **Keep the project root clean.** The root holds only relay system files (`AGENT_RELAY.md`, `PROJECT.md`, `passed.md`, `human.md`, `human_kept.md`, `done.txt`, `agent_relay.lock`, and one of `_HOOMAN.md` / `_HOOMAN_CLEAN_*.md`). Everything else — code, scratch files, logs, data, output — goes into subdirectories defined by `PROJECT.md` or into `./scratch/` if uncertain.
+9. **Keep the project root clean.** The root holds only relay system files (`AGENT_RELAY.md`, `PROJECT.md`, `passed.md`, `human.md`, `human_kept.md`, `next_round.txt`, `done.txt`, `agent_relay.lock`, and one of `_HOOMAN.md` / `_HOOMAN_CLEAN_*.md`). Everything else — code, scratch files, logs, data, output — goes into subdirectories defined by `PROJECT.md` or into `./scratch/` if uncertain.
 10. **Work in small bites and reserve turns for handoff.** Pick ONE small task. Leave breadcrumbs. Check pace every 8-10 calls. Getting cut off without writing the Step 6 files is the worst possible outcome — when in doubt, stop and hand off NOW.
 11. **Cover for unreliable agents per `PROJECT.md`'s delegation matrix, if defined.** Coverage absorbs workload, not authority. Document any coverage with a `COVERAGE:` line in `passed.md`.
 
@@ -344,6 +428,7 @@ Just exit. The launcher releases the lock and runs final checks (mtime verificat
 - `PROJECT.md` — project brief (read Step 4)
 - `human.md` — one-time override from the author; may be empty (Step 2, archived at 6c)
 - `human_kept.md` — persistent lessons (read Step 2b, append Step 6d)
+- `next_round.txt` — workload estimate for the next run; launcher reads this to pick a model (write Step 6h, launcher-consumed). Write-only from the agent's perspective.
 - `done.txt` — present only when project is complete (created Step 6e; launcher handles restart)
 - `_HOOMAN.md` *or* `_HOOMAN_CLEAN_YYYYMMDDHHMMSS.md` — agent-to-human signal, exactly one exists after a run (Step 6g)
 - `agent_relay.lock` — managed by the launcher; do not touch
