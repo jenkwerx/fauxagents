@@ -20,8 +20,8 @@
 #   ./agent_call.sh "Agent A" project_name
 #   ./agent_call.sh "Agent A" project_name --max-turns 50
 #   ./agent_call.sh "Agent A" project_name --effort high
-#   ./agent_call.sh "Agent G" project_name --model gemini-2.5-flash
-#   ./agent_call.sh "Agent C" project_name --model gpt-5.4 --effort high
+#   ./agent_call.sh "Agent G" project_name --model gemini-2.5-pro
+#   ./agent_call.sh "Agent C" project_name --model gpt-5.5 --effort high
 #
 # Defaults:
 #   --max-turns  25  (Claude only — ignored for Gemini and Codex)
@@ -29,7 +29,7 @@
 #                Claude accepts:  low / medium / high / xhigh / max
 #                Codex  accepts:  minimal / low / medium / high / xhigh
 #                Gemini: no CLI flag; value is ignored
-#   --model      per-agent: claude-opus-4-7 / gemini-3.1-pro-preview / gpt-5.4
+#   --model      per-agent: claude-opus-4-7 / gemini-2.5-pro / gpt-5.5
 #
 # Gemini-specific:
 #   --gemini-preload   Pre-load entire project directory into Gemini's context
@@ -71,6 +71,12 @@
 
 SECRETS_FILE="/opt/claude/.env.secrets"
 SECRETS_GROUP="safeclaude"   # group used in the 640 group-read setup
+
+
+USER_ID=$(id -u)
+export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$USER_ID/bus"
+
 
 load_secrets() {
   [ -f "$SECRETS_FILE" ] || return 0   # missing is fine; per-agent code checks for required keys
